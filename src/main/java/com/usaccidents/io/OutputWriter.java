@@ -1,120 +1,158 @@
 package com.usaccidents.io;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.File;
-import java.io.FileOutputStream;
+import java.io.FileWriter;
 import java.io.IOException;
-import java.io.OutputStreamWriter;
-import java.nio.charset.StandardCharsets;
-import java.text.SimpleDateFormat;
-import java.util.Date;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.Map;
 
 /**
- * Writes analysis results to JSON files
+ * Handles writing analysis results to output files
  */
 public class OutputWriter {
-
+    private static final Logger logger = LoggerFactory.getLogger(OutputWriter.class);
     private final String outputDirectory;
+    private final DateTimeFormatter fileNameFormatter = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss");
+    private final boolean isHdfs;
+    private HDFSUtils hdfsUtils;
 
     /**
-     * Creates a new OutputWriter
-     *
-     * @param outputDirectory the directory where output files will be written
+     * Constructor for local file system output
      */
     public OutputWriter(String outputDirectory) {
         this.outputDirectory = outputDirectory;
+        this.isHdfs = false;
     }
 
     /**
-     * Writes analysis results to a JSON file
-     *
-     * @param results the analysis results to write
-     * @throws IOException if an I/O error occurs
+     * Constructor for HDFS output
      */
-    public void writeResults(Map<String, Object> results) throws IOException {
-        String timestamp = new SimpleDateFormat("yyyyMMdd-HHmmss").format(new Date());
-        File outputFile = new File(outputDirectory, "accidents-analysis-" + timestamp + ".json");
+    public OutputWriter(String outputDirectory, HDFSUtils hdfsUtils) {
+        this.outputDirectory = outputDirectory;
+        this.hdfsUtils = hdfsUtils;
+        this.isHdfs = true;
 
-        try (OutputStreamWriter writer = new OutputStreamWriter(new FileOutputStream(outputFile), StandardCharsets.UTF_8)) {
-            // Simple JSON serialization for the results
-            StringBuilder json = new StringBuilder("{\n");
-            int index = 0;
-            for (Map.Entry<String, Object> entry : results.entrySet()) {
-                if (index > 0) {
-                    json.append(",\n");
-                }
-
-                json.append("  \"").append(entry.getKey()).append("\": ");
-                appendJsonValue(json, entry.getValue());
-                index++;
-            }
-            json.append("\n}\n");
-
-            writer.write(json.toString());
-            writer.flush();
-
-            System.out.println("Results written to: " + outputFile.getAbsolutePath());
+        if (isHdfs && hdfsUtils != null) {
+            hdfsUtils.createDirectoryIfNotExists(outputDirectory);
         }
     }
 
-    @SuppressWarnings("unchecked")
-    private void appendJsonValue(StringBuilder json, Object value) {
-        if (value == null) {
-            json.append("null");
-        } else if (value instanceof Number || value instanceof Boolean) {
-            json.append(value.toString());
-        } else if (value instanceof String) {
-            json.append("\"").append(escapeJsonString((String) value)).append("\"");
-        } else if (value instanceof Map) {
-            json.append("{\n");
-            int index = 0;
-            for (Map.Entry<Object, Object> entry : ((Map<Object, Object>) value).entrySet()) {
-                if (index > 0) {
-                    json.append(",\n");
+    /**
+     * Write analysis results to files
+     */
+    public void writeResults(Map<String, Object> results) {
+        try {
+            // Create the output directory if it doesn't exist (for local filesystem)
+            if (!isHdfs) {
+                Path outputPath = Paths.get(outputDirectory);
+                if (!Files.exists(outputPath)) {
+                    Files.createDirectories(outputPath);
                 }
-                json.append("    \"").append(escapeJsonString(entry.getKey().toString())).append("\": ");
-                appendJsonValue(json, entry.getValue());
-                index++;
             }
-            json.append("\n  }");
-        } else {
-            // Default fallback for other types
-            json.append("\"").append(escapeJsonString(value.toString())).append("\"");
+
+            String timestamp = LocalDateTime.now().format(fileNameFormatter);
+
+            // Write summary report
+            writeSummaryReport(results, timestamp);
+
+            // Write detailed reports
+            writeDetailedReport(results, "accidents_by_state", (List<Map.Entry<String, Integer>>) results.get("topStatesByAccidentCount"), timestamp);
+            writeDetailedReport(results, "accidents_by_severity", results.get("accidentsBySeverity"), timestamp);
+            writeDetailedReport(results, "accidents_by_weather", (List<Map.Entry<String, Integer>>) results.get("topWeatherConditions"), timestamp);
+            writeDetailedReport(results, "accidents_by_hour", results.get("accidentsByHour"), timestamp);
+
+            logger.info("All results written to {}", outputDirectory);
+        } catch (IOException e) {
+            logger.error("Error writing results", e);
+            throw new RuntimeException("Failed to write analysis results", e);
         }
     }
 
-    private String escapeJsonString(String str) {
-        if (str == null) return "";
+    /**
+     * Write a summary report
+     */
+    private void writeSummaryReport(Map<String, Object> results, String timestamp) {
+        String fileName = "summary_report_" + timestamp + ".txt";
+        StringBuilder content = new StringBuilder("US Accidents Analysis Summary Report\n");
+        content.append("Generated: ").append(LocalDateTime.now()).append("\n\n");
+        content.append("Total accidents analyzed: ").append(results.get("totalAccidents")).append("\n");
 
-        StringBuilder escaped = new StringBuilder();
-        for (int i = 0; i < str.length(); i++) {
-            char c = str.charAt(i);
-            switch (c) {
-                case '"':
-                    escaped.append("\\\"");
-                    break;
-                case '\\':
-                    escaped.append("\\\\");
-                    break;
-                case '\b':
-                    escaped.append("\\b");
-                    break;
-                case '\f':
-                    escaped.append("\\f");
-                    break;
-                case '\n':
-                    escaped.append("\\n");
-                    break;
-                case '\r':
-                    escaped.append("\\r");
-                    break;
-                case '\t':
-                    escaped.append("\\t");
-                    break;
-                default:
-                    escaped.append(c);
+        if (results.containsKey("averageSeverity")) {
+            content.append("Average accident severity: ").append(String.format("%.2f", results.get("averageSeverity"))).append("\n");
+        }
+
+        content.append("\nTop States by Accident Count:\n");
+        List<Map.Entry<String, Integer>> topStates = (List<Map.Entry<String, Integer>>) results.get("topStatesByAccidentCount");
+        if (topStates != null) {
+            for (Map.Entry<String, Integer> entry : topStates) {
+                content.append("  - ").append(entry.getKey()).append(": ").append(entry.getValue()).append("\n");
             }
         }
-        return escaped.toString();
+
+        content.append("\nAccidents by Severity:\n");
+        Map<Integer, Integer> severityMap = (Map<Integer, Integer>) results.get("accidentsBySeverity");
+        if (severityMap != null) {
+            for (Map.Entry<Integer, Integer> entry : severityMap.entrySet()) {
+                content.append("  - Severity ").append(entry.getKey()).append(": ").append(entry.getValue()).append("\n");
+            }
+        }
+
+        writeToFile(fileName, content.toString());
+    }
+
+    /**
+     * Write a detailed report for a specific category
+     */
+    private void writeDetailedReport(Map<String, Object> results, String reportName, Object data, String timestamp) {
+        String fileName = reportName + "_" + timestamp + ".txt";
+        StringBuilder content = new StringBuilder("US Accidents Detailed Report: " + reportName + "\n");
+        content.append("Generated: ").append(LocalDateTime.now()).append("\n\n");
+        content.append("Total accidents analyzed: ").append(results.get("totalAccidents")).append("\n\n");
+
+        if (data instanceof List) {
+            List<Map.Entry<String, Integer>> entries = (List<Map.Entry<String, Integer>>) data;
+            for (Map.Entry<String, Integer> entry : entries) {
+                content.append(entry.getKey()).append(": ").append(entry.getValue()).append("\n");
+            }
+        } else if (data instanceof Map) {
+            Map<?, Integer> map = (Map<?, Integer>) data;
+            for (Map.Entry<?, Integer> entry : map.entrySet()) {
+                content.append(entry.getKey()).append(": ").append(entry.getValue()).append("\n");
+            }
+        }
+
+        writeToFile(fileName, content.toString());
+    }
+
+    /**
+     * Write content to a file (local or HDFS)
+     */
+    private void writeToFile(String fileName, String content) {
+        String filePath = outputDirectory + "/" + fileName;
+
+        try {
+            if (isHdfs && hdfsUtils != null) {
+                // Write to HDFS
+                hdfsUtils.writeToFile(filePath, content);
+                logger.info("Wrote results to HDFS file: {}", filePath);
+            } else {
+                // Write to local file system
+                try (FileWriter writer = new FileWriter(filePath)) {
+                    writer.write(content);
+                }
+                logger.info("Wrote results to local file: {}", filePath);
+            }
+        } catch (IOException e) {
+            logger.error("Error writing to file: {}", filePath, e);
+            throw new RuntimeException("Failed to write to file", e);
+        }
     }
 }

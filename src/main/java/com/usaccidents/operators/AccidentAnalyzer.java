@@ -1,122 +1,130 @@
 package com.usaccidents.operators;
 
 import com.usaccidents.model.Accident;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.TreeMap;
-import java.util.concurrent.ConcurrentHashMap;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+import java.util.stream.Collectors;
 
 /**
- * Analyzes accident data to find patterns and insights
+ * Analyzes accident data to produce various statistics
  */
 public class AccidentAnalyzer {
+    private static final Logger logger = LoggerFactory.getLogger(AccidentAnalyzer.class);
 
-    // Analysis metrics
-    private Map<String, Integer> accidentsByState = new ConcurrentHashMap<>();
-    private Map<String, Integer> accidentsByWeatherCondition = new ConcurrentHashMap<>();
-    private Map<Integer, Integer> accidentsBySeverity = new ConcurrentHashMap<>();
-    private Map<String, Integer> accidentsByTimeOfDay = new ConcurrentHashMap<>();
-    private Map<String, Integer> accidentsByDayOfWeek = new ConcurrentHashMap<>();
     private int totalAccidents = 0;
-    private int nightAccidents = 0;
-    private int badWeatherAccidents = 0;
-    private int urbanAreaAccidents = 0;
-    private int intersectionAccidents = 0;
+    private Map<String, Integer> accidentsByState = new HashMap<>();
+    private Map<Integer, Integer> accidentsBySeverity = new HashMap<>();
+    private Map<String, Integer> accidentsByWeatherCondition = new HashMap<>();
+    private Map<String, Integer> accidentsByCity = new HashMap<>();
+    private Map<Integer, Integer> accidentsByHour = new HashMap<>();
 
     /**
-     * Processes a single accident record
-     *
-     * @param accident the accident to process
+     * Process a single accident record
      */
     public void processAccident(Accident accident) {
-        if (accident == null) return;
+        if (accident == null) {
+            return;
+        }
 
         totalAccidents++;
 
         // Analyze by state
-        incrementMapCount(accidentsByState, accident.getState());
-
-        // Analyze by weather condition
-        incrementMapCount(accidentsByWeatherCondition, accident.getWeatherCondition());
+        String state = accident.getState();
+        if (state != null && !state.isEmpty()) {
+            accidentsByState.put(state, accidentsByState.getOrDefault(state, 0) + 1);
+        }
 
         // Analyze by severity
-        incrementMapCount(accidentsBySeverity, accident.getSeverity());
+        int severity = accident.getSeverity();
+        accidentsBySeverity.put(severity, accidentsBySeverity.getOrDefault(severity, 0) + 1);
 
-        // Analyze by time of day (hour)
-        int hour = accident.getHourOfDay();
-        if (hour >= 0) {
-            String timeBlock;
-            if (hour < 6) timeBlock = "Night (0-6)";
-            else if (hour < 12) timeBlock = "Morning (6-12)";
-            else if (hour < 18) timeBlock = "Afternoon (12-18)";
-            else timeBlock = "Evening (18-24)";
-            incrementMapCount(accidentsByTimeOfDay, timeBlock);
+        // Analyze by weather condition
+        String weatherCondition = accident.getWeatherCondition();
+        if (weatherCondition != null && !weatherCondition.isEmpty()) {
+            accidentsByWeatherCondition.put(weatherCondition,
+                    accidentsByWeatherCondition.getOrDefault(weatherCondition, 0) + 1);
         }
 
-        // Analyze by day of week
-        incrementMapCount(accidentsByDayOfWeek, accident.getDayOfWeek());
-
-        // Special cases
-        if (accident.isNightAccident()) {
-            nightAccidents++;
+        // Analyze by city
+        String city = accident.getCity();
+        if (city != null && !city.isEmpty()) {
+            accidentsByCity.put(city, accidentsByCity.getOrDefault(city, 0) + 1);
         }
 
-        if (accident.hasBadWeather()) {
-            badWeatherAccidents++;
+        // Analyze by hour of day
+        LocalDateTime startTime = accident.getStartTime();
+        if (startTime != null) {
+            int hour = startTime.getHour();
+            accidentsByHour.put(hour, accidentsByHour.getOrDefault(hour, 0) + 1);
         }
-
-        if (accident.isUrbanArea()) {
-            urbanAreaAccidents++;
-        }
-
-        if (accident.isAtIntersection()) {
-            intersectionAccidents++;
-        }
-    }
-
-    private <K> void incrementMapCount(Map<K, Integer> map, K key) {
-        if (key == null) return;
-        map.compute(key, (k, v) -> (v == null) ? 1 : v + 1);
     }
 
     /**
-     * Returns the current analysis results
-     *
-     * @return a map containing all the analysis results
+     * Get the total number of accidents processed
+     */
+    public int getTotalAccidents() {
+        return totalAccidents;
+    }
+
+    /**
+     * Get comprehensive analysis results
      */
     public Map<String, Object> getResults() {
         Map<String, Object> results = new HashMap<>();
 
-        // Add all metrics to results
         results.put("totalAccidents", totalAccidents);
-        results.put("accidentsByState", new TreeMap<>(accidentsByState));
-        results.put("accidentsByWeatherCondition", new TreeMap<>(accidentsByWeatherCondition));
-        results.put("accidentsBySeverity", new TreeMap<>(accidentsBySeverity));
-        results.put("accidentsByTimeOfDay", accidentsByTimeOfDay);
-        results.put("accidentsByDayOfWeek", accidentsByDayOfWeek);
-        results.put("nightAccidentsCount", nightAccidents);
-        results.put("nightAccidentsPercentage", calculatePercentage(nightAccidents, totalAccidents));
-        results.put("badWeatherAccidentsCount", badWeatherAccidents);
-        results.put("badWeatherAccidentsPercentage", calculatePercentage(badWeatherAccidents, totalAccidents));
-        results.put("urbanAreaAccidentsCount", urbanAreaAccidents);
-        results.put("urbanAreaAccidentsPercentage", calculatePercentage(urbanAreaAccidents, totalAccidents));
-        results.put("intersectionAccidentsCount", intersectionAccidents);
-        results.put("intersectionAccidentsPercentage", calculatePercentage(intersectionAccidents, totalAccidents));
+
+        // Top states by accident count
+        results.put("topStatesByAccidentCount", getTopEntries(accidentsByState, 10));
+
+        // Accidents by severity
+        results.put("accidentsBySeverity", accidentsBySeverity);
+
+        // Top weather conditions
+        results.put("topWeatherConditions", getTopEntries(accidentsByWeatherCondition, 10));
+
+        // Top cities
+        results.put("topCitiesByAccidentCount", getTopEntries(accidentsByCity, 20));
+
+        // Accidents by hour
+        results.put("accidentsByHour", accidentsByHour);
+
+        // Additional derived statistics
+        if (!accidentsBySeverity.isEmpty()) {
+            double avgSeverity = accidentsBySeverity.entrySet().stream()
+                    .mapToDouble(entry -> entry.getKey() * entry.getValue())
+                    .sum() / totalAccidents;
+            results.put("averageSeverity", avgSeverity);
+        }
+
+        logger.info("Analysis complete. Total accidents processed: {}", totalAccidents);
 
         return results;
     }
 
-    private double calculatePercentage(int part, int total) {
-        return (total > 0) ? ((double) part / total) * 100.0 : 0.0;
+    /**
+     * Helper method to get top N entries from a map by value
+     */
+    private <K> List<Map.Entry<K, Integer>> getTopEntries(Map<K, Integer> map, int n) {
+        return map.entrySet().stream()
+                .sorted(Map.Entry.<K, Integer>comparingByValue().reversed())
+                .limit(n)
+                .collect(Collectors.toList());
     }
 
     /**
-     * Returns the total number of accidents processed
-     *
-     * @return the total number of accidents
+     * Reset the analyzer to clear all data
      */
-    public int getTotalAccidents() {
-        return totalAccidents;
+    public void reset() {
+        totalAccidents = 0;
+        accidentsByState.clear();
+        accidentsBySeverity.clear();
+        accidentsByWeatherCondition.clear();
+        accidentsByCity.clear();
+        accidentsByHour.clear();
     }
 }

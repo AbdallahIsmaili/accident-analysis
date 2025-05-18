@@ -1,195 +1,163 @@
 package com.usaccidents.io;
 
 import com.usaccidents.model.Accident;
+import org.apache.hadoop.fs.Path;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.function.Consumer;
 
 /**
- * CSV Parser for US Accidents data
+ * Parser for CSV files with US Accidents data
  */
 public class CSVParser {
-
-    // Expected CSV headers
-    private static final String[] EXPECTED_HEADERS = {
-            "ID", "Source", "Severity", "Start_Time", "End_Time", "Start_Lat", "Start_Lng",
-            "Distance(mi)", "Description", "Street", "City", "County", "State", "Zipcode",
-            "Country", "Timezone", "Airport_Code", "Temperature(F)", "Wind_Chill(F)",
-            "Humidity(%)", "Pressure(in)", "Visibility(mi)", "Wind_Direction", "Wind_Speed(mph)",
-            "Precipitation(in)", "Weather_Condition", "Amenity", "Bump", "Crossing", "Give_Way",
-            "Junction", "No_Exit", "Railway", "Roundabout", "Station", "Stop", "Traffic_Calming",
-            "Traffic_Signal", "Turning_Loop", "Sunrise_Sunset", "Civil_Twilight", "Nautical_Twilight",
-            "Astronomical_Twilight", "Weather_Timestamp_Filled"
-    };
-
-    private int[] columnIndices = new int[EXPECTED_HEADERS.length];
+    private static final Logger logger = LoggerFactory.getLogger(CSVParser.class);
+    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     /**
-     * Parses a CSV file and processes each accident record
-     *
-     * @param csvFile the CSV file to parse
-     * @param consumer the consumer that will process each accident
-     * @throws IOException if an I/O error occurs
+     * Parse a local CSV file and process each accident record
      */
-    public void parseCSVFile(File csvFile, Consumer<Accident> consumer) throws IOException {
-        try (BufferedReader reader = new BufferedReader(new FileReader(csvFile))) {
-            String line;
-            boolean headersProcessed = false;
+    public void parseCSVFile(File file, Consumer<Accident> processor) {
+        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+            String line = reader.readLine(); // Skip header line
 
+            if (line == null) {
+                logger.warn("Empty CSV file: {}", file.getName());
+                return;
+            }
+
+            // Process each line
             while ((line = reader.readLine()) != null) {
-                if (line.trim().isEmpty()) {
-                    continue;
-                }
-
-                String[] fields = line.split(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)", -1);
-
-                // Process headers if this is the first line
-                if (!headersProcessed) {
-                    processHeaders(fields);
-                    headersProcessed = true;
-                    continue;
-                }
-
                 try {
-                    Accident accident = parseAccident(fields);
+                    Accident accident = parseAccidentLine(line);
                     if (accident != null) {
-                        consumer.accept(accident);
+                        processor.accept(accident);
                     }
                 } catch (Exception e) {
-                    System.err.println("Error parsing CSV line: " + line);
-                    e.printStackTrace();
+                    logger.error("Error processing line: {}", line, e);
                 }
             }
+        } catch (IOException e) {
+            logger.error("Error reading CSV file: {}", file.getName(), e);
+            throw new RuntimeException("Error reading CSV file", e);
         }
     }
 
-    private void processHeaders(String[] headers) {
-        // Initialize all indices to -1 (not found)
-        for (int i = 0; i < columnIndices.length; i++) {
-            columnIndices[i] = -1;
-        }
-
-        // Map the actual header columns to our expected columns
-        for (int i = 0; i < headers.length; i++) {
-            String header = headers[i].trim().replace("\"", "");
-            for (int j = 0; j < EXPECTED_HEADERS.length; j++) {
-                if (EXPECTED_HEADERS[j].equalsIgnoreCase(header)) {
-                    columnIndices[j] = i;
-                    break;
+    /**
+     * Parse an HDFS CSV file and process each accident record
+     */
+    public void parseHDFSCSVFile(Path hdfsPath, HDFSUtils hdfsUtils, Consumer<Accident> processor) {
+        hdfsUtils.readCSVFile(hdfsPath, line -> {
+            try {
+                Accident accident = parseAccidentLine(line);
+                if (accident != null) {
+                    processor.accept(accident);
                 }
+            } catch (Exception e) {
+                logger.error("Error processing line from HDFS: {}", line, e);
             }
-        }
-
-        // Log missing columns
-        for (int i = 0; i < EXPECTED_HEADERS.length; i++) {
-            if (columnIndices[i] == -1) {
-                System.out.println("Warning: Column not found in CSV: " + EXPECTED_HEADERS[i]);
-            }
-        }
+        });
     }
 
-    private Accident parseAccident(String[] fields) {
-        Accident accident = new Accident();
+    /**
+     * Parse a CSV line into an Accident object
+     */
+    private Accident parseAccidentLine(String line) {
+        if (line == null || line.trim().isEmpty()) {
+            return null;
+        }
+
+        // Split by comma, but avoid splitting commas inside quotes
+        String[] fields = splitCSVLine(line);
+
+        if (fields.length < 10) {
+            logger.warn("Insufficient fields in line: {}", line);
+            return null;
+        }
 
         try {
-            // ID is mandatory
-            int idIdx = columnIndices[0];
-            if (idIdx >= 0 && idIdx < fields.length) {
-                accident.setId(cleanField(fields[idIdx]));
-            } else {
-                return null; // Skip if no ID
-            }
+            Accident accident = new Accident();
 
-            // Set remaining fields
-            setStringField(accident::setSource, fields, columnIndices[1]);
-            setIntField(accident::setSeverity, fields, columnIndices[2]);
-            setStringField(accident::setStartTime, fields, columnIndices[3]);
-            setStringField(accident::setEndTime, fields, columnIndices[4]);
-            setDoubleField(accident::setStartLat, fields, columnIndices[5]);
-            setDoubleField(accident::setStartLng, fields, columnIndices[6]);
-            setDoubleField(accident::setDistanceMi, fields, columnIndices[7]);
-            setStringField(accident::setDescription, fields, columnIndices[8]);
-            setStringField(accident::setStreet, fields, columnIndices[9]);
-            setStringField(accident::setCity, fields, columnIndices[10]);
-            setStringField(accident::setCounty, fields, columnIndices[11]);
-            setStringField(accident::setState, fields, columnIndices[12]);
-            setStringField(accident::setZipcode, fields, columnIndices[13]);
-            setStringField(accident::setCountry, fields, columnIndices[14]);
-            setStringField(accident::setTimezone, fields, columnIndices[15]);
-            setStringField(accident::setAirportCode, fields, columnIndices[16]);
-            setDoubleField(accident::setTemperatureF, fields, columnIndices[17]);
-            setDoubleField(accident::setWindChillF, fields, columnIndices[18]);
-            setDoubleField(accident::setHumidityPercent, fields, columnIndices[19]);
-            setDoubleField(accident::setPressureIn, fields, columnIndices[20]);
-            setDoubleField(accident::setVisibilityMi, fields, columnIndices[21]);
-            setStringField(accident::setWindDirection, fields, columnIndices[22]);
-            setDoubleField(accident::setWindSpeedMph, fields, columnIndices[23]);
-            setDoubleField(accident::setPrecipitationIn, fields, columnIndices[24]);
-            setStringField(accident::setWeatherCondition, fields, columnIndices[25]);
-            setStringField(accident::setAmenity, fields, columnIndices[26]);
-            setStringField(accident::setBump, fields, columnIndices[27]);
-            setStringField(accident::setCrossing, fields, columnIndices[28]);
-            setStringField(accident::setGiveWay, fields, columnIndices[29]);
-            setStringField(accident::setJunction, fields, columnIndices[30]);
-            setStringField(accident::setNoExit, fields, columnIndices[31]);
-            setStringField(accident::setRailway, fields, columnIndices[32]);
-            setStringField(accident::setRoundabout, fields, columnIndices[33]);
-            setStringField(accident::setStation, fields, columnIndices[34]);
-            setStringField(accident::setStop, fields, columnIndices[35]);
-            setStringField(accident::setTrafficCalming, fields, columnIndices[36]);
-            setStringField(accident::setTrafficSignal, fields, columnIndices[37]);
-            setStringField(accident::setTurningLoop, fields, columnIndices[38]);
-            setStringField(accident::setSunriseSunset, fields, columnIndices[39]);
-            setStringField(accident::setCivilTwilight, fields, columnIndices[40]);
-            setStringField(accident::setNauticalTwilight, fields, columnIndices[41]);
-            setStringField(accident::setAstronomicalTwilight, fields, columnIndices[42]);
-            setStringField(accident::setWeatherTimestampFilled, fields, columnIndices[43]);
+            // Set basic fields from CSV
+            accident.setId(getStringValue(fields, 0));
+            accident.setSeverity(getIntValue(fields, 1));
+            accident.setStartTime(getDateTimeValue(fields, 2));
+            accident.setEndTime(getDateTimeValue(fields, 3));
+            accident.setStartLat(getDoubleValue(fields, 4));
+            accident.setStartLng(getDoubleValue(fields, 5));
+
+            // Set location fields
+            accident.setStreet(getStringValue(fields, 10));
+            accident.setCity(getStringValue(fields, 11));
+            accident.setState(getStringValue(fields, 13));
+
+            // Set weather fields if available
+            if (fields.length > 25) {
+                accident.setWeatherCondition(getStringValue(fields, 25));
+            }
+            if (fields.length > 17) {
+                accident.setTemperature(getDoubleValue(fields, 17));
+            }
 
             return accident;
         } catch (Exception e) {
-            System.err.println("Error parsing accident data");
-            e.printStackTrace();
+            logger.error("Failed to parse accident data from line: {}", line, e);
             return null;
         }
     }
 
-    private String cleanField(String field) {
-        if (field == null) return null;
-        return field.trim().replace("\"", "");
+    /**
+     * Split CSV line, handling quoted fields
+     */
+    private String[] splitCSVLine(String line) {
+        // Basic CSV parsing logic - this doesn't handle all CSV edge cases
+        // For production, consider using a library like Apache Commons CSV
+        return line.split(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)", -1);
     }
 
-    private void setStringField(java.util.function.Consumer<String> setter, String[] fields, int index) {
-        if (index >= 0 && index < fields.length) {
-            setter.accept(cleanField(fields[index]));
+    private String getStringValue(String[] fields, int index) {
+        if (index >= fields.length) return "";
+        String value = fields[index].trim();
+
+        // Remove surrounding quotes if present
+        if (value.startsWith("\"") && value.endsWith("\"")) {
+            value = value.substring(1, value.length() - 1);
+        }
+
+        return value.isEmpty() ? "" : value;
+    }
+
+    private int getIntValue(String[] fields, int index) {
+        String value = getStringValue(fields, index);
+        try {
+            return value.isEmpty() ? 0 : Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            return 0;
         }
     }
 
-    private void setIntField(java.util.function.IntConsumer setter, String[] fields, int index) {
-        if (index >= 0 && index < fields.length) {
-            String value = cleanField(fields[index]);
-            if (value != null && !value.isEmpty()) {
-                try {
-                    setter.accept(Integer.parseInt(value));
-                } catch (NumberFormatException e) {
-                    System.out.println("Warning: Invalid integer value: " + value);
-                }
-            }
+    private double getDoubleValue(String[] fields, int index) {
+        String value = getStringValue(fields, index);
+        try {
+            return value.isEmpty() ? 0.0 : Double.parseDouble(value);
+        } catch (NumberFormatException e) {
+            return 0.0;
         }
     }
 
-    private void setDoubleField(java.util.function.DoubleConsumer setter, String[] fields, int index) {
-        if (index >= 0 && index < fields.length) {
-            String value = cleanField(fields[index]);
-            if (value != null && !value.isEmpty()) {
-                try {
-                    setter.accept(Double.parseDouble(value));
-                } catch (NumberFormatException e) {
-                    System.out.println("Warning: Invalid double value: " + value);
-                }
-            }
+    private LocalDateTime getDateTimeValue(String[] fields, int index) {
+        String value = getStringValue(fields, index);
+        try {
+            return value.isEmpty() ? null : LocalDateTime.parse(value, DATE_FORMATTER);
+        } catch (DateTimeParseException e) {
+            return null;
         }
     }
 }

@@ -8,6 +8,9 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -85,9 +88,9 @@ public class USAccidentsStandaloneApp {
         File[] files = directory.listFiles((dir, name) -> name.toLowerCase().endsWith(".csv"));
 
         if (files == null) {
-            return List.of();
+            return Collections.emptyList(); // Java 8 compatible alternative to List.of()
         }
 
-        return List.of(files);
+        return Arrays.asList(files); // Java 8 compatible alternative to List.of(files)
     }
 }
