@@ -9,68 +9,19 @@
   <url>http://maven.apache.org</url>
 
   <properties>
-    <apex.version>3.7.0</apex.version>
-    <malhar.version>3.8.0</malhar.version>
-    <hadoop.version>2.7.4</hadoop.version>
-    <junit.version>4.13.2</junit.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.source>1.8</maven.compiler.source>
     <maven.compiler.target>1.8</maven.compiler.target>
+    <junit.version>4.13.2</junit.version>
   </properties>
 
   <dependencies>
-    <!-- Apache Apex dependencies -->
-    <dependency>
-      <groupId>org.apache.apex</groupId>
-      <artifactId>apex-engine</artifactId>
-      <version>${apex.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.apex</groupId>
-      <artifactId>apex-common</artifactId>
-      <version>${apex.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.apex</groupId>
-      <artifactId>malhar-library</artifactId>
-      <version>${malhar.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.apex</groupId>
-      <artifactId>malhar-contrib</artifactId>
-      <version>${malhar.version}</version>
-    </dependency>
-
-    <!-- Hadoop dependencies -->
-    <dependency>
-      <groupId>org.apache.hadoop</groupId>
-      <artifactId>hadoop-common</artifactId>
-      <version>${hadoop.version}</version>
-      <exclusions>
-        <exclusion>
-          <groupId>javax.servlet</groupId>
-          <artifactId>servlet-api</artifactId>
-        </exclusion>
-      </exclusions>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.hadoop</groupId>
-      <artifactId>hadoop-client</artifactId>
-      <version>${hadoop.version}</version>
-    </dependency>
-
-    <!-- HBase dependencies -->
-    <dependency>
-      <groupId>org.apache.hbase</groupId>
-      <artifactId>hbase-client</artifactId>
-      <version>1.4.13</version>
-    </dependency>
-
-    <!-- JDBC dependencies for HIVE -->
+    <!-- JDBC dependencies for HIVE (optional) -->
     <dependency>
       <groupId>org.apache.hive</groupId>
       <artifactId>hive-jdbc</artifactId>
       <version>2.3.9</version>
+      <optional>true</optional>
     </dependency>
 
     <!-- Logging -->
@@ -108,56 +59,47 @@
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-eclipse-plugin</artifactId>
-        <version>2.10</version>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.2.0</version>
         <configuration>
-          <downloadSources>true</downloadSources>
+          <archive>
+            <manifest>
+              <addClasspath>true</addClasspath>
+              <classpathPrefix>lib/</classpathPrefix>
+              <mainClass>com.usaccidents.USAccidentsStandaloneApp</mainClass>
+            </manifest>
+          </archive>
         </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-assembly-plugin</artifactId>
+        <version>3.3.0</version>
+        <configuration>
+          <descriptorRefs>
+            <descriptorRef>jar-with-dependencies</descriptorRef>
+          </descriptorRefs>
+          <archive>
+            <manifest>
+              <mainClass>com.usaccidents.USAccidentsStandaloneApp</mainClass>
+            </manifest>
+          </archive>
+        </configuration>
+        <executions>
+          <execution>
+            <id>make-assembly</id>
+            <phase>package</phase>
+            <goals>
+              <goal>single</goal>
+            </goals>
+          </execution>
+        </executions>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <version>2.22.2</version>
       </plugin>
-      <plugin>
-        <artifactId>maven-assembly-plugin</artifactId>
-        <executions>
-          <execution>
-            <id>app-package-assembly</id>
-            <phase>package</phase>
-            <goals>
-              <goal>single</goal>
-            </goals>
-            <configuration>
-              <finalName>${project.artifactId}-${project.version}-apexapp</finalName>
-              <appendAssemblyId>false</appendAssemblyId>
-              <descriptors>
-                <descriptor>src/assemble/appPackage.xml</descriptor>
-              </descriptors>
-              <archive>
-                <manifest>
-                  <mainClass>com.usaccidents.USAccidentsAnalysisApplication</mainClass>
-                </manifest>
-              </archive>
-            </configuration>
-          </execution>
-        </executions>
-      </plugin>
     </plugins>
   </build>
-
-  <repositories>
-    <repository>
-      <id>central</id>
-      <url>https://repo.maven.apache.org/maven2</url>
-    </repository>
-    <repository>
-      <id>apache</id>
-      <url>https://repository.apache.org/content/repositories/releases</url>
-    </repository>
-    <repository>
-      <id>datatorrent</id>
-      <url>https://www.datatorrent.com/maven/repo</url>
-    </repository>
-  </repositories>
 </project>

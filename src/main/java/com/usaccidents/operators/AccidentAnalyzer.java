@@ -1,11 +1,5 @@
 package com.usaccidents.operators;
 
-import com.datatorrent.api.Context;
-import com.datatorrent.api.DefaultInputPort;
-import com.datatorrent.api.DefaultOutputPort;
-import com.datatorrent.api.annotation.InputPortFieldAnnotation;
-import com.datatorrent.api.annotation.OutputPortFieldAnnotation;
-import com.datatorrent.common.util.BaseOperator;
 import com.usaccidents.model.Accident;
 
 import java.util.HashMap;
@@ -13,15 +7,10 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 /**
- * Operator that analyzes accident data for patterns and insights
+ * Analyzes accident data to find patterns and insights
  */
-public class AccidentAnalyzer extends BaseOperator
-{
-    private static final Logger LOG = LoggerFactory.getLogger(AccidentAnalyzer.class);
+public class AccidentAnalyzer {
 
     // Analysis metrics
     private Map<String, Integer> accidentsByState = new ConcurrentHashMap<>();
@@ -35,28 +24,12 @@ public class AccidentAnalyzer extends BaseOperator
     private int urbanAreaAccidents = 0;
     private int intersectionAccidents = 0;
 
-    // Windowing parameters
-    private long windowDurationMillis = 60000; // Default: 1 minute
-    private long lastWindowEmitTime = 0;
-
-    @InputPortFieldAnnotation(optional = false)
-    public final transient DefaultInputPort<Accident> input = new DefaultInputPort<Accident>() {
-        @Override
-        public void process(Accident accident) {
-            processAccident(accident);
-            checkWindowEmit();
-        }
-    };
-
-    @OutputPortFieldAnnotation(optional = false)
-    public final transient DefaultOutputPort<Map<String, Object>> output = new DefaultOutputPort<>();
-
-    @Override
-    public void setup(Context.OperatorContext context) {
-        lastWindowEmitTime = System.currentTimeMillis();
-    }
-
-    private void processAccident(Accident accident) {
+    /**
+     * Processes a single accident record
+     *
+     * @param accident the accident to process
+     */
+    public void processAccident(Accident accident) {
         if (accident == null) return;
 
         totalAccidents++;
@@ -107,15 +80,12 @@ public class AccidentAnalyzer extends BaseOperator
         map.compute(key, (k, v) -> (v == null) ? 1 : v + 1);
     }
 
-    private void checkWindowEmit() {
-        long currentTime = System.currentTimeMillis();
-        if (currentTime - lastWindowEmitTime >= windowDurationMillis) {
-            emitResults();
-            lastWindowEmitTime = currentTime;
-        }
-    }
-
-    private void emitResults() {
+    /**
+     * Returns the current analysis results
+     *
+     * @return a map containing all the analysis results
+     */
+    public Map<String, Object> getResults() {
         Map<String, Object> results = new HashMap<>();
 
         // Add all metrics to results
@@ -134,16 +104,19 @@ public class AccidentAnalyzer extends BaseOperator
         results.put("intersectionAccidentsCount", intersectionAccidents);
         results.put("intersectionAccidentsPercentage", calculatePercentage(intersectionAccidents, totalAccidents));
 
-        // Log and emit the results
-        LOG.info("Emitting window results. Total accidents processed: {}", totalAccidents);
-        output.emit(results);
+        return results;
     }
 
     private double calculatePercentage(int part, int total) {
         return (total > 0) ? ((double) part / total) * 100.0 : 0.0;
     }
 
-    public void setWindowDurationMillis(long windowDurationMillis) {
-        this.windowDurationMillis = windowDurationMillis;
+    /**
+     * Returns the total number of accidents processed
+     *
+     * @return the total number of accidents
+     */
+    public int getTotalAccidents() {
+        return totalAccidents;
     }
 }
