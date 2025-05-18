@@ -1,0 +1,6 @@
+US Accidents Detailed Report: accidents_by_state
+Generated: 2025-05-18T17:09:46.638
+
+Total accidents analyzed: 7728394
+
+US: 7728394

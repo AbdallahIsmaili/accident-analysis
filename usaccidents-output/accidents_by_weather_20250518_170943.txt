@@ -1,0 +1,7 @@
+US Accidents Detailed Report: accidents_by_weather
+Generated: 2025-05-18T17:09:46.737
+
+Total accidents analyzed: 7728394
+
+False: 7632060
+True: 96334

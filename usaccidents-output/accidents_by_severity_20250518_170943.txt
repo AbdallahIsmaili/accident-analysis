@@ -1,0 +1,9 @@
+US Accidents Detailed Report: accidents_by_severity
+Generated: 2025-05-18T17:09:46.695
+
+Total accidents analyzed: 7728394
+
+1: 67366
+2: 6156981
+3: 1299337
+4: 204710

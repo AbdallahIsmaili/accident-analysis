@@ -1,0 +1,14 @@
+US Accidents Analysis Summary Report
+Generated: 2025-05-18T17:09:43.524
+
+Total accidents analyzed: 7728394
+Average accident severity: 2.21
+
+Top States by Accident Count:
+  - US: 7728394
+
+Accidents by Severity:
+  - Severity 1: 67366
+  - Severity 2: 6156981
+  - Severity 3: 1299337
+  - Severity 4: 204710
