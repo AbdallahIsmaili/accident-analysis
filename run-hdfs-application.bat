@@ -76,16 +76,15 @@ set CMD_ARGS=--input "%HDFS_INPUT_DIR%" --output "%HDFS_OUTPUT_DIR%"
 if "%USE_HIVE%"=="true" (
     set CMD_ARGS=%CMD_ARGS% --use-hive --hive-jdbc "%HIVE_JDBC%"
 
-    REM Check if Hive is running (basic check)
+    REM Check if Hive is running
     echo Testing Hive connection...
-    for /f %%i in ('"%JAVA_HOME%\bin\java" -cp "%APP_JAR%;%HADOOP_CLASSPATH%" org.apache.hive.jdbc.HiveDriver 2^>^&1') do (
-        echo %%i | findstr /i "NoClassDefFoundError" > nul
-        if %ERRORLEVEL% EQU 0 (
-            echo Error: Cannot connect to Hive. Please start Hive services first.
-            echo Run 'hiveserver2' to start Hive server.
-            exit /b 1
-        )
+    "%HADOOP_HOME%\bin\beeline.cmd" -u "%HIVE_JDBC%" -e "show databases;" > nul 2>&1
+    if %ERRORLEVEL% NEQ 0 (
+        echo Error: Cannot connect to Hive. Please start Hive services first.
+        echo Run 'hiveserver2' to start Hive server.
+        exit /b 1
     )
+    echo Hive connection successful.
 )
 
 REM Run the application with HDFS support
@@ -94,15 +93,26 @@ echo Starting application...
 
 if %ERRORLEVEL% EQU 0 (
     echo Application completed successfully!
-    echo Results are available in HDFS: %HDFS_OUTPUT_DIR%
 
-    REM Copy results from HDFS to local filesystem for convenience
-    echo Copying results from HDFS to local directory...
-    "%HADOOP_HOME%\bin\hdfs.cmd" dfs -copyToLocal %HDFS_OUTPUT_DIR%/* .\output\
-    if %ERRORLEVEL% EQU 0 (
-        echo Results copied to local directory: .\output\
+    if "%USE_HIVE%"=="true" (
+        echo Results are available in Hive tables: us_accidents, location_analysis, severity_analysis, time_analysis, and weather_analysis
+        echo You can query them using Hive CLI or Beeline.
+
+        echo.
+        echo Example Hive queries:
+        echo "%HADOOP_HOME%\bin\beeline.cmd" -u "%HIVE_JDBC%" -e "SELECT state, COUNT(*) as count FROM location_analysis GROUP BY state ORDER BY count DESC LIMIT 10;"
+        echo "%HADOOP_HOME%\bin\beeline.cmd" -u "%HIVE_JDBC%" -e "SELECT weather_condition, accident_count FROM weather_analysis ORDER BY accident_count DESC LIMIT 10;"
     ) else (
-        echo Failed to copy results to local directory. They are still available in HDFS.
+        echo Results are available in HDFS: %HDFS_OUTPUT_DIR%
+
+        REM Copy results from HDFS to local filesystem for convenience
+        echo Copying results from HDFS to local directory...
+        "%HADOOP_HOME%\bin\hdfs.cmd" dfs -copyToLocal %HDFS_OUTPUT_DIR%/* .\output\
+        if %ERRORLEVEL% EQU 0 (
+            echo Results copied to local directory: .\output\
+        ) else (
+            echo Failed to copy results to local directory. They are still available in HDFS.
+        )
     )
 ) else (
     echo Application execution failed. Please check the error messages above.

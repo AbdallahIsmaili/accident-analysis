@@ -7,13 +7,6 @@ import org.slf4j.LoggerFactory;
 import java.util.List;
 import java.util.Map;
 
-/**
- * This class handles the Hive data processing workflow for US Accidents
- * - Creates raw data table
- * - Loads data from HDFS
- * - Creates analysis tables
- * - Processes and aggregates data into analytical views
- */
 public class USAccidentsHiveDataProcessor {
     private static final Logger logger = LoggerFactory.getLogger(USAccidentsHiveDataProcessor.class);
     private final HiveUtils hiveUtils;
@@ -57,59 +50,115 @@ public class USAccidentsHiveDataProcessor {
     }
 
     /**
-     * Create the raw accidents table in Hive
+     * Modified workflow that skips data loading
+     */
+    public void executeAnalysisOnly() {
+        try {
+            // Step 1: Verify raw table exists and has data
+            verifyRawTable();
+
+            // Step 2: Create analysis tables
+            createAnalysisTables();
+
+            // Step 3: Populate analysis tables
+            populateLocationAnalysisTable();
+            populateSeverityAnalysisTable();
+            populateTimeAnalysisTable();
+            populateWeatherAnalysisTable();
+
+            // Step 4: Verify data was processed correctly
+            verifyTableCounts();
+
+            logger.info("Hive data analysis workflow completed successfully");
+        } catch (Exception e) {
+            logger.error("Error in Hive data analysis workflow: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to process Hive data", e);
+        }
+    }
+
+    /**
+     * Verify the raw table exists and has data
+     */
+    private void verifyRawTable() {
+        logger.info("Verifying raw table: {}", rawTableName);
+
+        List<Map<String, Object>> tables = hiveUtils.executeQuery(
+                "SHOW TABLES LIKE '" + rawTableName + "'");
+
+        if (tables.isEmpty()) {
+            throw new RuntimeException("Raw table " + rawTableName + " does not exist");
+        }
+
+        List<Map<String, Object>> count = hiveUtils.executeQuery(
+                "SELECT COUNT(*) as cnt FROM " + rawTableName);
+
+        long rowCount = (long) count.get(0).get("cnt");
+        if (rowCount == 0) {
+            throw new RuntimeException("Raw table " + rawTableName + " is empty");
+        }
+
+        logger.info("Raw table verified with {} rows", rowCount);
+    }
+
+    /**
+     * Create the raw accidents table in Hive with STRING types for timestamps and booleans
      */
     private void createRawAccidentsTable() {
         logger.info("Creating raw accidents table: {}", rawTableName);
 
         String createTableSQL =
                 "CREATE TABLE IF NOT EXISTS " + rawTableName + " (" +
-                        "id STRING, " +
-                        "severity INT, " +
-                        "start_time TIMESTAMP, " +
-                        "end_time TIMESTAMP, " +
-                        "start_lat DOUBLE, " +
-                        "start_lng DOUBLE, " +
-                        "end_lat DOUBLE, " +
-                        "end_lng DOUBLE, " +
-                        "distance DOUBLE, " +
-                        "description STRING, " +
-                        "street STRING, " +
-                        "city STRING, " +
-                        "county STRING, " +
-                        "state STRING, " +
-                        "zipcode STRING, " +
-                        "timezone STRING, " +
-                        "weather_timestamp TIMESTAMP, " +
-                        "temperature DOUBLE, " +
-                        "wind_chill DOUBLE, " +
-                        "humidity DOUBLE, " +
-                        "pressure DOUBLE, " +
-                        "visibility DOUBLE, " +
-                        "wind_direction STRING, " +
-                        "wind_speed DOUBLE, " +
-                        "precipitation DOUBLE, " +
-                        "weather_condition STRING, " +
-                        "amenity BOOLEAN, " +
-                        "bump BOOLEAN, " +
-                        "crossing BOOLEAN, " +
-                        "give_way BOOLEAN, " +
-                        "junction BOOLEAN, " +
-                        "no_exit BOOLEAN, " +
-                        "railway BOOLEAN, " +
-                        "roundabout BOOLEAN, " +
-                        "station BOOLEAN, " +
-                        "stop BOOLEAN, " +
-                        "traffic_calming BOOLEAN, " +
-                        "traffic_signal BOOLEAN, " +
-                        "turning_loop BOOLEAN, " +
-                        "sunrise_sunset STRING, " +
-                        "civil_twilight STRING, " +
-                        "nautical_twilight STRING, " +
-                        "astronomical_twilight STRING" +
+                        "Source STRING, " +
+                        "Severity INT, " +
+                        "Start_Time STRING, " +
+                        "End_Time STRING, " +
+                        "Start_Lat DOUBLE, " +
+                        "Start_Lng DOUBLE, " +
+                        "Distance_mi DOUBLE, " +
+                        "Description STRING, " +
+                        "Street STRING, " +
+                        "City STRING, " +
+                        "County STRING, " +
+                        "State STRING, " +
+                        "Zipcode STRING, " +
+                        "Country STRING, " +
+                        "Timezone STRING, " +
+                        "Airport_Code STRING, " +
+                        "Temperature_F DOUBLE, " +
+                        "Wind_Chill_F DOUBLE, " +
+                        "Humidity_percent DOUBLE, " +
+                        "Pressure_in DOUBLE, " +
+                        "Visibility_mi DOUBLE, " +
+                        "Wind_Direction STRING, " +
+                        "Wind_Speed_mph DOUBLE, " +
+                        "Precipitation_in DOUBLE, " +
+                        "Weather_Condition STRING, " +
+                        "Amenity STRING, " +
+                        "Bump STRING, " +
+                        "Crossing STRING, " +
+                        "Give_Way STRING, " +
+                        "Junction STRING, " +
+                        "No_Exit STRING, " +
+                        "Railway STRING, " +
+                        "Roundabout STRING, " +
+                        "Station STRING, " +
+                        "Stop STRING, " +
+                        "Traffic_Calming STRING, " +
+                        "Traffic_Signal STRING, " +
+                        "Turning_Loop STRING, " +
+                        "Sunrise_Sunset STRING, " +
+                        "Civil_Twilight STRING, " +
+                        "Nautical_Twilight STRING, " +
+                        "Astronomical_Twilight STRING, " +
+                        "ID STRING, " +
+                        "Weather_Timestamp_Filled STRING" +
                         ") " +
                         "ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' " +
-                        "TBLPROPERTIES ('skip.header.line.count'='1')";
+                        "STORED AS TEXTFILE " +
+                        "TBLPROPERTIES ( " +
+                        "   'skip.header.line.count'='1', " +
+                        "   'serialization.null.format'=''" +
+                        ")";
 
         hiveUtils.executeUpdate(createTableSQL);
         logger.info("Raw accidents table created successfully");
@@ -142,11 +191,11 @@ public class USAccidentsHiveDataProcessor {
                         "latitude DOUBLE, " +
                         "longitude DOUBLE, " +
                         "street_type STRING, " +
-                        "has_amenity BOOLEAN, " +
-                        "has_bump BOOLEAN, " +
-                        "has_crossing BOOLEAN, " +
-                        "has_junction BOOLEAN, " +
-                        "has_traffic_signal BOOLEAN, " +
+                        "has_amenity STRING, " +
+                        "has_bump STRING, " +
+                        "has_crossing STRING, " +
+                        "has_junction STRING, " +
+                        "has_traffic_signal STRING, " +
                         "accident_count INT" +
                         ") " +
                         "STORED AS ORC " +
@@ -204,7 +253,7 @@ public class USAccidentsHiveDataProcessor {
     }
 
     /**
-     * Populate the location_analysis table
+     * Populate the location_analysis table with your specific query
      */
     private void populateLocationAnalysisTable() {
         logger.info("Populating location_analysis table");
@@ -212,35 +261,31 @@ public class USAccidentsHiveDataProcessor {
         // First, clear the table if it has data
         hiveUtils.executeUpdate("TRUNCATE TABLE location_analysis");
 
-        // Extract street type from the street field
         String insertLocationSQL =
-                "INSERT INTO location_analysis " +
+                "INSERT INTO TABLE location_analysis " +
                         "SELECT " +
-                        "  id as accident_id, " +
-                        "  state, " +
-                        "  city, " +
-                        "  county, " +
-                        "  zipcode, " +
-                        "  start_lat as latitude, " +
-                        "  start_lng as longitude, " +
-                        "  CASE " +
-                        "    WHEN UPPER(street) LIKE '%STREET' THEN 'Street' " +
-                        "    WHEN UPPER(street) LIKE '%AVE%' OR UPPER(street) LIKE '%AVENUE%' THEN 'Avenue' " +
-                        "    WHEN UPPER(street) LIKE '%BLVD%' OR UPPER(street) LIKE '%BOULEVARD%' THEN 'Boulevard' " +
-                        "    WHEN UPPER(street) LIKE '%RD%' OR UPPER(street) LIKE '%ROAD%' THEN 'Road' " +
-                        "    WHEN UPPER(street) LIKE '%LANE%' OR UPPER(street) LIKE '%LN%' THEN 'Lane' " +
-                        "    WHEN UPPER(street) LIKE '%DR%' OR UPPER(street) LIKE '%DRIVE%' THEN 'Drive' " +
-                        "    WHEN UPPER(street) LIKE '%HWY%' OR UPPER(street) LIKE '%HIGHWAY%' THEN 'Highway' " +
-                        "    WHEN UPPER(street) LIKE '%PKWY%' OR UPPER(street) LIKE '%PARKWAY%' THEN 'Parkway' " +
-                        "    WHEN UPPER(street) LIKE '%I-%' THEN 'Interstate' " +
-                        "    ELSE 'Other' " +
-                        "  END as street_type, " +
-                        "  amenity as has_amenity, " +
-                        "  bump as has_bump, " +
-                        "  crossing as has_crossing, " +
-                        "  junction as has_junction, " +
-                        "  traffic_signal as has_traffic_signal, " +
-                        "  1 as accident_count " +
+                        "    ID as accident_id, " +
+                        "    State, " +
+                        "    City, " +
+                        "    County, " +
+                        "    Zipcode, " +
+                        "    Start_Lat as latitude, " +
+                        "    Start_Lng as longitude, " +
+                        "    CASE " +
+                        "        WHEN Street LIKE '%I-%' THEN 'Interstate' " +
+                        "        WHEN Street LIKE '%US-%' THEN 'US Highway' " +
+                        "        WHEN Street LIKE '%State Route%' THEN 'State Highway' " +
+                        "        WHEN Street LIKE '%Rd%' THEN 'Road' " +
+                        "        WHEN Street LIKE '%Ave%' THEN 'Avenue' " +
+                        "        WHEN Street LIKE '%St%' THEN 'Street' " +
+                        "        ELSE 'Other' " +
+                        "    END as street_type, " +
+                        "    Amenity as has_amenity, " +
+                        "    Bump as has_bump, " +
+                        "    Crossing as has_crossing, " +
+                        "    Junction as has_junction, " +
+                        "    Traffic_Signal as has_traffic_signal, " +
+                        "    1 as accident_count " +
                         "FROM " + rawTableName;
 
         hiveUtils.executeUpdate(insertLocationSQL);
@@ -248,7 +293,7 @@ public class USAccidentsHiveDataProcessor {
     }
 
     /**
-     * Populate the severity_analysis table
+     * Populate the severity_analysis table with your specific query
      */
     private void populateSeverityAnalysisTable() {
         logger.info("Populating severity_analysis table");
@@ -256,76 +301,49 @@ public class USAccidentsHiveDataProcessor {
         // First, clear the table if it has data
         hiveUtils.executeUpdate("TRUNCATE TABLE severity_analysis");
 
-        // Create a query that finds common time of day and weather per severity level
         String insertSeveritySQL =
-                "INSERT INTO severity_analysis " +
-                        "WITH severity_time_weather AS ( " +
-                        "  SELECT " +
-                        "    severity as severity_level, " +
-                        "    CASE " +
-                        "      WHEN HOUR(start_time) BETWEEN 6 AND 11 THEN 'Morning' " +
-                        "      WHEN HOUR(start_time) BETWEEN 12 AND 17 THEN 'Afternoon' " +
-                        "      WHEN HOUR(start_time) BETWEEN 18 AND 23 THEN 'Evening' " +
-                        "      ELSE 'Night' " +
-                        "    END as time_of_day, " +
-                        "    weather_condition, " +
-                        "    COUNT(*) as weather_count " +
-                        "  FROM " + rawTableName + " " +
-                        "  WHERE weather_condition IS NOT NULL " +
-                        "  GROUP BY severity, " +
-                        "    CASE " +
-                        "      WHEN HOUR(start_time) BETWEEN 6 AND 11 THEN 'Morning' " +
-                        "      WHEN HOUR(start_time) BETWEEN 12 AND 17 THEN 'Afternoon' " +
-                        "      WHEN HOUR(start_time) BETWEEN 18 AND 23 THEN 'Evening' " +
-                        "      ELSE 'Night' " +
-                        "    END, " +
-                        "    weather_condition " +
-                        "), " +
-                        "ranked_time_weather AS ( " +
-                        "  SELECT " +
-                        "    severity_level, " +
-                        "    time_of_day, " +
-                        "    weather_condition, " +
-                        "    weather_count, " +
-                        "    ROW_NUMBER() OVER (PARTITION BY severity_level ORDER BY weather_count DESC) as time_rank, " +
-                        "    ROW_NUMBER() OVER (PARTITION BY severity_level ORDER BY weather_count DESC) as weather_rank " +
-                        "  FROM severity_time_weather " +
-                        ") " +
+                "INSERT INTO TABLE severity_analysis " +
                         "SELECT " +
-                        "  s.severity_level, " +
-                        "  CASE " +
-                        "    WHEN s.severity_level = 1 THEN 'Minor' " +
-                        "    WHEN s.severity_level = 2 THEN 'Moderate' " +
-                        "    WHEN s.severity_level = 3 THEN 'Serious' " +
-                        "    WHEN s.severity_level = 4 THEN 'Severe' " +
-                        "    ELSE 'Unknown' " +
-                        "  END as severity_description, " +
-                        "  t.time_of_day as common_time_of_day, " +
-                        "  w.weather_condition as common_weather_condition, " +
-                        "  COUNT(*) as count_by_severity " +
-                        "FROM " + rawTableName + " s " +
-                        "LEFT JOIN (SELECT severity_level, time_of_day FROM ranked_time_weather WHERE time_rank = 1) t " +
-                        "  ON s.severity = t.severity_level " +
-                        "LEFT JOIN (SELECT severity_level, weather_condition FROM ranked_time_weather WHERE weather_rank = 1) w " +
-                        "  ON s.severity = w.severity_level " +
+                        "    Severity as severity_level, " +
+                        "    CASE " +
+                        "        WHEN Severity = 1 THEN 'Low' " +
+                        "        WHEN Severity = 2 THEN 'Moderate' " +
+                        "        WHEN Severity = 3 THEN 'High' " +
+                        "        WHEN Severity = 4 THEN 'Very High' " +
+                        "        ELSE 'Unknown' " +
+                        "    END as severity_description, " +
+                        "    CASE " +
+                        "        WHEN hour(from_unixtime(unix_timestamp(Start_Time))) BETWEEN 6 AND 11 THEN 'Morning' " +
+                        "        WHEN hour(from_unixtime(unix_timestamp(Start_Time))) BETWEEN 12 AND 17 THEN 'Afternoon' " +
+                        "        WHEN hour(from_unixtime(unix_timestamp(Start_Time))) BETWEEN 18 AND 23 THEN 'Evening' " +
+                        "        ELSE 'Night' " +
+                        "    END as common_time_of_day, " +
+                        "    Weather_Condition as common_weather_condition, " +
+                        "    COUNT(*) as count_by_severity " +
+                        "FROM " + rawTableName + " " +
                         "GROUP BY " +
-                        "  s.severity, " +
-                        "  CASE " +
-                        "    WHEN s.severity = 1 THEN 'Minor' " +
-                        "    WHEN s.severity = 2 THEN 'Moderate' " +
-                        "    WHEN s.severity = 3 THEN 'Serious' " +
-                        "    WHEN s.severity = 4 THEN 'Severe' " +
-                        "    ELSE 'Unknown' " +
-                        "  END, " +
-                        "  t.time_of_day, " +
-                        "  w.weather_condition";
+                        "    Severity, " +
+                        "    CASE " +
+                        "        WHEN Severity = 1 THEN 'Low' " +
+                        "        WHEN Severity = 2 THEN 'Moderate' " +
+                        "        WHEN Severity = 3 THEN 'High' " +
+                        "        WHEN Severity = 4 THEN 'Very High' " +
+                        "        ELSE 'Unknown' " +
+                        "    END, " +
+                        "    CASE " +
+                        "        WHEN hour(from_unixtime(unix_timestamp(Start_Time))) BETWEEN 6 AND 11 THEN 'Morning' " +
+                        "        WHEN hour(from_unixtime(unix_timestamp(Start_Time))) BETWEEN 12 AND 17 THEN 'Afternoon' " +
+                        "        WHEN hour(from_unixtime(unix_timestamp(Start_Time))) BETWEEN 18 AND 23 THEN 'Evening' " +
+                        "        ELSE 'Night' " +
+                        "    END, " +
+                        "    Weather_Condition";
 
         hiveUtils.executeUpdate(insertSeveritySQL);
         logger.info("Severity analysis table populated");
     }
 
     /**
-     * Populate the time_analysis table
+     * Populate the time_analysis table with your specific query
      */
     private void populateTimeAnalysisTable() {
         logger.info("Populating time_analysis table");
@@ -334,73 +352,40 @@ public class USAccidentsHiveDataProcessor {
         hiveUtils.executeUpdate("TRUNCATE TABLE time_analysis");
 
         String insertTimeSQL =
-                "INSERT INTO time_analysis " +
+                "INSERT INTO TABLE time_analysis " +
                         "SELECT " +
-                        "  HOUR(start_time) as hour_of_day, " +
-                        "  CASE " +
-                        "    WHEN DAYOFWEEK(start_time) = 1 THEN 'Sunday' " +
-                        "    WHEN DAYOFWEEK(start_time) = 2 THEN 'Monday' " +
-                        "    WHEN DAYOFWEEK(start_time) = 3 THEN 'Tuesday' " +
-                        "    WHEN DAYOFWEEK(start_time) = 4 THEN 'Wednesday' " +
-                        "    WHEN DAYOFWEEK(start_time) = 5 THEN 'Thursday' " +
-                        "    WHEN DAYOFWEEK(start_time) = 6 THEN 'Friday' " +
-                        "    WHEN DAYOFWEEK(start_time) = 7 THEN 'Saturday' " +
-                        "  END as day_of_week, " +
-                        "  CASE " +
-                        "    WHEN MONTH(start_time) = 1 THEN 'January' " +
-                        "    WHEN MONTH(start_time) = 2 THEN 'February' " +
-                        "    WHEN MONTH(start_time) = 3 THEN 'March' " +
-                        "    WHEN MONTH(start_time) = 4 THEN 'April' " +
-                        "    WHEN MONTH(start_time) = 5 THEN 'May' " +
-                        "    WHEN MONTH(start_time) = 6 THEN 'June' " +
-                        "    WHEN MONTH(start_time) = 7 THEN 'July' " +
-                        "    WHEN MONTH(start_time) = 8 THEN 'August' " +
-                        "    WHEN MONTH(start_time) = 9 THEN 'September' " +
-                        "    WHEN MONTH(start_time) = 10 THEN 'October' " +
-                        "    WHEN MONTH(start_time) = 11 THEN 'November' " +
-                        "    WHEN MONTH(start_time) = 12 THEN 'December' " +
-                        "  END as month_of_year, " +
-                        "  YEAR(start_time) as year, " +
-                        "  sunrise_sunset as sunrise_sunset_period, " +
-                        "  COALESCE(civil_twilight, nautical_twilight, astronomical_twilight, 'Unknown') as twilight_period, " +
-                        "  COUNT(*) as accident_count " +
+                        "    hour(from_unixtime(unix_timestamp(regexp_replace(Start_Time, '\"', ''), 'yyyy-MM-dd HH:mm:ss')) as hour_of_day, " +
+                        "    date_format(from_unixtime(unix_timestamp(regexp_replace(Start_Time, '\"', ''), 'yyyy-MM-dd HH:mm:ss'), 'EEEE') as day_of_week, " +
+                        "    date_format(from_unixtime(unix_timestamp(regexp_replace(Start_Time, '\"', ''), 'yyyy-MM-dd HH:mm:ss'), 'MMMM') as month_of_year, " +
+                        "    year(from_unixtime(unix_timestamp(regexp_replace(Start_Time, '\"', ''), 'yyyy-MM-dd HH:mm:ss')) as year, " +
+                        "    Sunrise_Sunset as sunrise_sunset_period, " +
+                        "    CASE " +
+                        "        WHEN Civil_Twilight = 'Day' THEN 'Day' " +
+                        "        WHEN Nautical_Twilight = 'Day' THEN 'Dawn/Dusk' " +
+                        "        WHEN Astronomical_Twilight = 'Day' THEN 'Night' " +
+                        "        ELSE 'Night' " +
+                        "    END as twilight_period, " +
+                        "    COUNT(*) as accident_count " +
                         "FROM " + rawTableName + " " +
-                        "WHERE start_time IS NOT NULL " +
                         "GROUP BY " +
-                        "  HOUR(start_time), " +
-                        "  CASE " +
-                        "    WHEN DAYOFWEEK(start_time) = 1 THEN 'Sunday' " +
-                        "    WHEN DAYOFWEEK(start_time) = 2 THEN 'Monday' " +
-                        "    WHEN DAYOFWEEK(start_time) = 3 THEN 'Tuesday' " +
-                        "    WHEN DAYOFWEEK(start_time) = 4 THEN 'Wednesday' " +
-                        "    WHEN DAYOFWEEK(start_time) = 5 THEN 'Thursday' " +
-                        "    WHEN DAYOFWEEK(start_time) = 6 THEN 'Friday' " +
-                        "    WHEN DAYOFWEEK(start_time) = 7 THEN 'Saturday' " +
-                        "  END, " +
-                        "  CASE " +
-                        "    WHEN MONTH(start_time) = 1 THEN 'January' " +
-                        "    WHEN MONTH(start_time) = 2 THEN 'February' " +
-                        "    WHEN MONTH(start_time) = 3 THEN 'March' " +
-                        "    WHEN MONTH(start_time) = 4 THEN 'April' " +
-                        "    WHEN MONTH(start_time) = 5 THEN 'May' " +
-                        "    WHEN MONTH(start_time) = 6 THEN 'June' " +
-                        "    WHEN MONTH(start_time) = 7 THEN 'July' " +
-                        "    WHEN MONTH(start_time) = 8 THEN 'August' " +
-                        "    WHEN MONTH(start_time) = 9 THEN 'September' " +
-                        "    WHEN MONTH(start_time) = 10 THEN 'October' " +
-                        "    WHEN MONTH(start_time) = 11 THEN 'November' " +
-                        "    WHEN MONTH(start_time) = 12 THEN 'December' " +
-                        "  END, " +
-                        "  YEAR(start_time), " +
-                        "  sunrise_sunset, " +
-                        "  COALESCE(civil_twilight, nautical_twilight, astronomical_twilight, 'Unknown')";
+                        "    hour(from_unixtime(unix_timestamp(regexp_replace(Start_Time, '\"', ''), 'yyyy-MM-dd HH:mm:ss'))), " +
+                        "    date_format(from_unixtime(unix_timestamp(regexp_replace(Start_Time, '\"', ''), 'yyyy-MM-dd HH:mm:ss'), 'EEEE'), " +
+                        "    date_format(from_unixtime(unix_timestamp(regexp_replace(Start_Time, '\"', ''), 'yyyy-MM-dd HH:mm:ss'), 'MMMM'), " +
+                        "    year(from_unixtime(unix_timestamp(regexp_replace(Start_Time, '\"', ''), 'yyyy-MM-dd HH:mm:ss'))), " +
+                        "    Sunrise_Sunset, " +
+                        "    CASE " +
+                        "        WHEN Civil_Twilight = 'Day' THEN 'Day' " +
+                        "        WHEN Nautical_Twilight = 'Day' THEN 'Dawn/Dusk' " +
+                        "        WHEN Astronomical_Twilight = 'Day' THEN 'Night' " +
+                        "        ELSE 'Night' " +
+                        "    END";
 
         hiveUtils.executeUpdate(insertTimeSQL);
         logger.info("Time analysis table populated");
     }
 
     /**
-     * Populate the weather_analysis table
+     * Populate the weather_analysis table with your specific query
      */
     private void populateWeatherAnalysisTable() {
         logger.info("Populating weather_analysis table");
@@ -409,74 +394,55 @@ public class USAccidentsHiveDataProcessor {
         hiveUtils.executeUpdate("TRUNCATE TABLE weather_analysis");
 
         String insertWeatherSQL =
-                "INSERT INTO weather_analysis " +
+                "INSERT INTO TABLE weather_analysis " +
                         "SELECT " +
-                        "  weather_condition, " +
-                        "  CASE " +
-                        "    WHEN temperature < 32 THEN 'Below Freezing (< 32°F)' " +
-                        "    WHEN temperature BETWEEN 32 AND 50 THEN 'Cold (32-50°F)' " +
-                        "    WHEN temperature BETWEEN 50 AND 68 THEN 'Mild (50-68°F)' " +
-                        "    WHEN temperature BETWEEN 68 AND 86 THEN 'Warm (68-86°F)' " +
-                        "    WHEN temperature > 86 THEN 'Hot (> 86°F)' " +
-                        "    ELSE 'Unknown' " +
-                        "  END as temperature_range, " +
-                        "  CASE " +
-                        "    WHEN visibility < 1 THEN 'Very Low (< 1 mile)' " +
-                        "    WHEN visibility BETWEEN 1 AND 3 THEN 'Low (1-3 miles)' " +
-                        "    WHEN visibility BETWEEN 3 AND 7 THEN 'Moderate (3-7 miles)' " +
-                        "    WHEN visibility > 7 THEN 'Good (> 7 miles)' " +
-                        "    ELSE 'Unknown' " +
-                        "  END as visibility_range, " +
-                        "  CASE " +
-                        "    WHEN precipitation = 0 THEN 'None' " +
-                        "    WHEN precipitation BETWEEN 0 AND 0.1 THEN 'Light (0-0.1 in)' " +
-                        "    WHEN precipitation BETWEEN 0.1 AND 0.5 THEN 'Moderate (0.1-0.5 in)' " +
-                        "    WHEN precipitation > 0.5 THEN 'Heavy (> 0.5 in)' " +
-                        "    ELSE 'Unknown' " +
-                        "  END as precipitation_level, " +
-                        "  CASE " +
-                        "    WHEN wind_speed < 5 THEN 'Calm (< 5 mph)' " +
-                        "    WHEN wind_speed BETWEEN 5 AND 15 THEN 'Light (5-15 mph)' " +
-                        "    WHEN wind_speed BETWEEN 15 AND 25 THEN 'Moderate (15-25 mph)' " +
-                        "    WHEN wind_speed > 25 THEN 'Strong (> 25 mph)' " +
-                        "    ELSE 'Unknown' " +
-                        "  END as wind_speed_range, " +
-                        "  AVG(severity) as average_severity, " +
-                        "  COUNT(*) as accident_count " +
-                        "FROM " + rawTableName + " " +
-                        "WHERE weather_condition IS NOT NULL " +
+                        "    weather_condition, " +
+                        "    temperature_range, " +
+                        "    visibility_range, " +
+                        "    precipitation_level, " +
+                        "    wind_speed_range, " +
+                        "    AVG(Severity) as average_severity, " +
+                        "    COUNT(*) as accident_count " +
+                        "FROM ( " +
+                        "    SELECT " +
+                        "        Weather_Condition AS weather_condition, " +
+                        "        CASE " +
+                        "            WHEN Temperature_F < 32 THEN 'Below Freezing' " +
+                        "            WHEN Temperature_F BETWEEN 32 AND 50 THEN 'Cold' " +
+                        "            WHEN Temperature_F BETWEEN 50 AND 70 THEN 'Mild' " +
+                        "            WHEN Temperature_F BETWEEN 70 AND 85 THEN 'Warm' " +
+                        "            ELSE 'Hot' " +
+                        "        END AS temperature_range, " +
+                        "        CASE " +
+                        "            WHEN Visibility_mi < 1 THEN 'Very Low' " +
+                        "            WHEN Visibility_mi BETWEEN 1 AND 3 THEN 'Low' " +
+                        "            WHEN Visibility_mi BETWEEN 3 AND 6 THEN 'Moderate' " +
+                        "            WHEN Visibility_mi BETWEEN 6 AND 10 THEN 'Good' " +
+                        "            ELSE 'Excellent' " +
+                        "        END AS visibility_range, " +
+                        "        CASE " +
+                        "            WHEN Precipitation_in = 0 THEN 'None' " +
+                        "            WHEN Precipitation_in BETWEEN 0 AND 0.1 THEN 'Light' " +
+                        "            WHEN Precipitation_in BETWEEN 0.1 AND 0.3 THEN 'Moderate' " +
+                        "            ELSE 'Heavy' " +
+                        "        END AS precipitation_level, " +
+                        "        CASE " +
+                        "            WHEN Wind_Speed_mph = 0 THEN 'Calm' " +
+                        "            WHEN Wind_Speed_mph BETWEEN 1 AND 7 THEN 'Light' " +
+                        "            WHEN Wind_Speed_mph BETWEEN 8 AND 25 THEN 'Moderate' " +
+                        "            WHEN Wind_Speed_mph BETWEEN 26 AND 54 THEN 'Strong' " +
+                        "            ELSE 'Violent' " +
+                        "        END AS wind_speed_range, " +
+                        "        Severity " +
+                        "    FROM " + rawTableName + " " +
+                        "    WHERE Weather_Condition IS NOT NULL " +
+                        ") tmp " +
                         "GROUP BY " +
-                        "  weather_condition, " +
-                        "  CASE " +
-                        "    WHEN temperature < 32 THEN 'Below Freezing (< 32°F)' " +
-                        "    WHEN temperature BETWEEN 32 AND 50 THEN 'Cold (32-50°F)' " +
-                        "    WHEN temperature BETWEEN 50 AND 68 THEN 'Mild (50-68°F)' " +
-                        "    WHEN temperature BETWEEN 68 AND 86 THEN 'Warm (68-86°F)' " +
-                        "    WHEN temperature > 86 THEN 'Hot (> 86°F)' " +
-                        "    ELSE 'Unknown' " +
-                        "  END, " +
-                        "  CASE " +
-                        "    WHEN visibility < 1 THEN 'Very Low (< 1 mile)' " +
-                        "    WHEN visibility BETWEEN 1 AND 3 THEN 'Low (1-3 miles)' " +
-                        "    WHEN visibility BETWEEN 3 AND 7 THEN 'Moderate (3-7 miles)' " +
-                        "    WHEN visibility > 7 THEN 'Good (> 7 miles)' " +
-                        "    ELSE 'Unknown' " +
-                        "  END, " +
-                        "  CASE " +
-                        "    WHEN precipitation = 0 THEN 'None' " +
-                        "    WHEN precipitation BETWEEN 0 AND 0.1 THEN 'Light (0-0.1 in)' " +
-                        "    WHEN precipitation BETWEEN 0.1 AND 0.5 THEN 'Moderate (0.1-0.5 in)' " +
-                        "    WHEN precipitation > 0.5 THEN 'Heavy (> 0.5 in)' " +
-                        "    ELSE 'Unknown' " +
-                        "  END, " +
-                        "  CASE " +
-                        "    WHEN wind_speed < 5 THEN 'Calm (< 5 mph)' " +
-                        "    WHEN wind_speed BETWEEN 5 AND 15 THEN 'Light (5-15 mph)' " +
-                        "    WHEN wind_speed BETWEEN 15 AND 25 THEN 'Moderate (15-25 mph)' " +
-                        "    WHEN wind_speed > 25 THEN 'Strong (> 25 mph)' " +
-                        "    ELSE 'Unknown' " +
-                        "  END " +
-                        "HAVING COUNT(*) > 10";
+                        "    weather_condition, " +
+                        "    temperature_range, " +
+                        "    visibility_range, " +
+                        "    precipitation_level, " +
+                        "    wind_speed_range";
 
         hiveUtils.executeUpdate(insertWeatherSQL);
         logger.info("Weather analysis table populated");
