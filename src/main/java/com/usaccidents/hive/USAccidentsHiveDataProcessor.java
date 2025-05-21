@@ -1,6 +1,9 @@
 package com.usaccidents.hive;
 
 import com.usaccidents.io.HiveUtils;
+import org.apache.hadoop.fs.FSDataOutputStream;
+import org.apache.hadoop.fs.permission.FsAction;
+import org.apache.hadoop.fs.permission.FsPermission;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -9,6 +12,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -542,67 +546,41 @@ public class USAccidentsHiveDataProcessor {
 
 
     /**
-     * Saves the contents of a Hive table to a CSV file in HDFS
+     * Exports a single Hive table directly to a CSV-style file in HDFS.
      */
-    public void saveTableToHdfsCSV(String tableName, String hdfsOutputPath) throws IOException {
-        logger.info("Exporting {} table to HDFS CSV file: {}", tableName, hdfsOutputPath);
-
-        // Create Hadoop configuration
+    public void saveTableToHdfsCSV(String tableName, String hdfsOutputDir) throws SQLException, IOException {
+        // Create HDFS configuration
         Configuration conf = new Configuration();
-        conf.set("fs.defaultFS", "hdfs://localhost:9000"); // Adjust if your HDFS uses different address
+        // Use the full HDFS URI if needed (adjust based on your cluster)
+        // conf.set("fs.defaultFS", "hdfs://namenode:8020");
 
         FileSystem fs = FileSystem.get(conf);
-        Path outputPath = new Path(hdfsOutputPath);
 
-        // Create a temporary local file
-        File tempFile = File.createTempFile(tableName, ".csv");
-        try {
-            // First save to local temp file
-            saveTableToLocalCSV(tableName, tempFile.getAbsolutePath());
-
-            // Copy to HDFS
-            fs.copyFromLocalFile(new Path(tempFile.getAbsolutePath()), outputPath);
-            logger.info("Successfully exported {} to HDFS", hdfsOutputPath);
-        } finally {
-            // Clean up
-            if (tempFile.exists()) {
-                tempFile.delete();
-            }
+        // Create the output directory with proper permissions
+        Path outputPath = new Path(hdfsOutputDir);
+        if (!fs.exists(outputPath)) {
+            fs.mkdirs(outputPath);
+            fs.setPermission(outputPath, new FsPermission(FsAction.ALL, FsAction.ALL, FsAction.ALL));
+            logger.info("Created HDFS directory: {}", hdfsOutputDir);
         }
+
+        // Alternative export syntax
+        String query = String.format(
+                "INSERT OVERWRITE DIRECTORY '%s' " +
+                        "ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' " +
+                        "SELECT * FROM %s",
+                hdfsOutputDir, tableName
+        );
+
+        logger.info("Exporting table {} to HDFS at {}", tableName, hdfsOutputDir);
+        hiveUtils.executeUpdate(query);
     }
 
-    private void saveTableToLocalCSV(String tableName, String localPath) throws IOException {
-        try (FileWriter writer = new FileWriter(localPath)) {
-            String query = "SELECT * FROM " + tableName;
-            List<Map<String, Object>> results = hiveUtils.executeQuery(query);
-
-            if (results.isEmpty()) {
-                logger.warn("Table {} is empty, creating empty CSV file", tableName);
-                return;
-            }
-
-            // Write header row
-            writer.write(String.join(",", results.get(0).keySet()) + "\n");
-
-            // Write data rows
-            for (Map<String, Object> row : results) {
-                List<String> values = new ArrayList<>();
-                for (Object value : row.values()) {
-                    String strValue = (value != null) ? value.toString() : "";
-                    if (strValue.contains(",")) {
-                        strValue = "\"" + strValue + "\"";
-                    }
-                    values.add(strValue);
-                }
-                writer.write(String.join(",", values) + "\n");
-            }
-        }
-    }
 
     /**
-     * Saves all analysis tables to CSV files in HDFS
+     * Saves all analysis tables to CSV files in HDFS without local storage
      */
-    public void saveAllAnalysisTablesToHdfsCSV(String hdfsOutputDir) throws IOException {
+    public void saveAllAnalysisTablesToHdfsCSV(String hdfsOutputDir) throws SQLException, IOException {
         String[] analysisTables = {
                 "location_analysis",
                 "severity_analysis",
@@ -610,25 +588,9 @@ public class USAccidentsHiveDataProcessor {
                 "weather_analysis"
         };
 
-        // Initialize HDFS connection
-        Configuration conf = new Configuration();
-        conf.set("fs.defaultFS", "hdfs://localhost:9000"); // Adjust if needed
-        FileSystem fs = FileSystem.get(conf);
-
-        // Ensure output directory exists
-        Path outputDir = new Path(hdfsOutputDir);
-        if (!fs.exists(outputDir)) {
-            fs.mkdirs(outputDir);
-        }
-
         for (String table : analysisTables) {
-            String hdfsOutputPath = hdfsOutputDir + "/" + table + ".csv";
-            try {
-                saveTableToHdfsCSV(table, hdfsOutputPath);
-            } catch (Exception e) {
-                logger.error("Failed to export {} table to HDFS CSV: {}", table, e.getMessage());
-                throw e;
-            }
+            String tableHdfsDir = hdfsOutputDir + "/" + table;
+            saveTableToHdfsCSV(table, tableHdfsDir);
         }
     }
 

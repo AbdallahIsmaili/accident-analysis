@@ -25,18 +25,18 @@ public class USAccidentsHDFSApp {
                     new USAccidentsHiveDataProcessor(hiveUtils, "raw_accidents");
 
             // Execute the analysis workflow
-//            processor.executeAnalysisOnly();
+            processor.executeAnalysisOnly();
 
             // Display sample data from all tables
             logger.info("Displaying sample data from all tables...");
             processor.selectSampleFromAllTables();
 
             // Test just the HDFS CSV export functionality
-            logger.info("Testing HDFS CSV export functionality...");
+            logger.info("Exporting all analysis tables directly to HDFS...");
             processor.saveAllAnalysisTablesToHdfsCSV(HDFS_OUTPUT_DIR);
 
+            logger.info("✅ Export completed successfully.");
 
-            logger.info("ENDED: CSV export completed successfully");
         } catch (Exception e) {
             logger.error("Error during processing: {}", e.getMessage(), e);
             System.err.println("Error during processing: " + e.getMessage());
