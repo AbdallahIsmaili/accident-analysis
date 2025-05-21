@@ -12,7 +12,7 @@ import java.io.File;
  */
 public class USAccidentsHDFSApp {
     private static final Logger logger = LoggerFactory.getLogger(USAccidentsHDFSApp.class);
-    private static final String OUTPUT_DIR = "D:\\Global Projects\\Java\\datatorrent\\accident-analysis\\us-accidents-output-csv";
+    private static final String HDFS_OUTPUT_DIR = "/user/" + System.getProperty("user.name") + "/us_accidents_output";
 
     public static void main(String[] args) {
         // Initialize Hive connection
@@ -26,16 +26,17 @@ public class USAccidentsHDFSApp {
 
             // Execute the analysis workflow
 //            processor.executeAnalysisOnly();
-//
-//            // Display sample data from all tables
-//            logger.info("Displaying sample data from all tables...");
-//            processor.selectSampleFromAllTables();
 
-            // Save analysis tables to CSV
-            logger.info("Exporting analysis tables to CSV files...");
-            processor.saveAllAnalysisTablesToCSV(OUTPUT_DIR);
+            // Display sample data from all tables
+            logger.info("Displaying sample data from all tables...");
+            processor.selectSampleFromAllTables();
 
-            logger.info("ENDED: CSV export test completed successfully");
+            // Test just the HDFS CSV export functionality
+            logger.info("Testing HDFS CSV export functionality...");
+            processor.saveAllAnalysisTablesToHdfsCSV(HDFS_OUTPUT_DIR);
+
+
+            logger.info("ENDED: CSV export completed successfully");
         } catch (Exception e) {
             logger.error("Error during processing: {}", e.getMessage(), e);
             System.err.println("Error during processing: " + e.getMessage());
