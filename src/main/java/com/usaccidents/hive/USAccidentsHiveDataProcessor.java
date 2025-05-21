@@ -4,6 +4,8 @@ import com.usaccidents.io.HiveUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
 import java.util.List;
 import java.util.Map;
 
@@ -354,10 +356,10 @@ public class USAccidentsHiveDataProcessor {
         String insertTimeSQL =
                 "INSERT INTO TABLE time_analysis " +
                         "SELECT " +
-                        "    hour(from_unixtime(unix_timestamp(regexp_replace(Start_Time, '\"', ''), 'yyyy-MM-dd HH:mm:ss')) as hour_of_day, " +
-                        "    date_format(from_unixtime(unix_timestamp(regexp_replace(Start_Time, '\"', ''), 'yyyy-MM-dd HH:mm:ss'), 'EEEE') as day_of_week, " +
-                        "    date_format(from_unixtime(unix_timestamp(regexp_replace(Start_Time, '\"', ''), 'yyyy-MM-dd HH:mm:ss'), 'MMMM') as month_of_year, " +
-                        "    year(from_unixtime(unix_timestamp(regexp_replace(Start_Time, '\"', ''), 'yyyy-MM-dd HH:mm:ss')) as year, " +
+                        "    hour(from_unixtime(unix_timestamp(regexp_replace(Start_Time, '\"', ''), 'yyyy-MM-dd HH:mm:ss'))) as hour_of_day, " +
+                        "    date_format(from_unixtime(unix_timestamp(regexp_replace(Start_Time, '\"', ''), 'yyyy-MM-dd HH:mm:ss')), 'EEEE') as day_of_week, " +
+                        "    date_format(from_unixtime(unix_timestamp(regexp_replace(Start_Time, '\"', ''), 'yyyy-MM-dd HH:mm:ss')), 'MMMM') as month_of_year, " +
+                        "    year(from_unixtime(unix_timestamp(regexp_replace(Start_Time, '\"', ''), 'yyyy-MM-dd HH:mm:ss'))) as year, " +
                         "    Sunrise_Sunset as sunrise_sunset_period, " +
                         "    CASE " +
                         "        WHEN Civil_Twilight = 'Day' THEN 'Day' " +
@@ -369,8 +371,8 @@ public class USAccidentsHiveDataProcessor {
                         "FROM " + rawTableName + " " +
                         "GROUP BY " +
                         "    hour(from_unixtime(unix_timestamp(regexp_replace(Start_Time, '\"', ''), 'yyyy-MM-dd HH:mm:ss'))), " +
-                        "    date_format(from_unixtime(unix_timestamp(regexp_replace(Start_Time, '\"', ''), 'yyyy-MM-dd HH:mm:ss'), 'EEEE'), " +
-                        "    date_format(from_unixtime(unix_timestamp(regexp_replace(Start_Time, '\"', ''), 'yyyy-MM-dd HH:mm:ss'), 'MMMM'), " +
+                        "    date_format(from_unixtime(unix_timestamp(regexp_replace(Start_Time, '\"', ''), 'yyyy-MM-dd HH:mm:ss')), 'EEEE'), " +
+                        "    date_format(from_unixtime(unix_timestamp(regexp_replace(Start_Time, '\"', ''), 'yyyy-MM-dd HH:mm:ss')), 'MMMM'), " +
                         "    year(from_unixtime(unix_timestamp(regexp_replace(Start_Time, '\"', ''), 'yyyy-MM-dd HH:mm:ss'))), " +
                         "    Sunrise_Sunset, " +
                         "    CASE " +
@@ -379,6 +381,7 @@ public class USAccidentsHiveDataProcessor {
                         "        WHEN Astronomical_Twilight = 'Day' THEN 'Night' " +
                         "        ELSE 'Night' " +
                         "    END";
+
 
         hiveUtils.executeUpdate(insertTimeSQL);
         logger.info("Time analysis table populated");
@@ -467,4 +470,65 @@ public class USAccidentsHiveDataProcessor {
         logger.info("  Time analysis table: {}", timeCount.get(0).get("count"));
         logger.info("  Weather analysis table: {}", weatherCount.get(0).get("count"));
     }
+
+
+    /**
+     * Selects and displays 5 sample rows from a specified table
+     * @param tableName The name of the table to query
+     */
+    public void selectSampleRows(String tableName) {
+        logger.info("Fetching sample rows from table: {}", tableName);
+
+        try {
+            String query = "SELECT * FROM " + tableName + " LIMIT 5";
+            List<Map<String, Object>> results = hiveUtils.executeQuery(query);
+
+            if (results.isEmpty()) {
+                logger.info("No data found in table: {}", tableName);
+                return;
+            }
+
+            // Print header
+            System.out.println("\nSample rows from table: " + tableName);
+            System.out.println("----------------------------------------");
+
+            // Print column names
+            System.out.println(String.join(" | ", results.get(0).keySet()));
+
+            // Print rows
+            for (Map<String, Object> row : results) {
+                System.out.println(String.join(" | ",
+                        row.values().stream()
+                                .map(Object::toString)
+                                .toArray(String[]::new)
+                ));
+            }
+
+        } catch (Exception e) {
+            logger.error("Error selecting sample rows from {}: {}", tableName, e.getMessage());
+            System.err.println("Error selecting sample rows from " + tableName + ": " + e.getMessage());
+        }
+    }
+
+    /**
+     * Selects and displays 5 sample rows from all analysis tables and the raw table
+     */
+    public void selectSampleFromAllTables() {
+        String[] tables = {
+                rawTableName,  // Use the instance variable for raw table name
+                "location_analysis",
+                "severity_analysis",
+                "time_analysis",
+                "weather_analysis"
+        };
+
+        for (String table : tables) {
+            try {
+                selectSampleRows(table);
+            } catch (Exception e) {
+                logger.error("Error sampling table {}: {}", table, e.getMessage());
+            }
+        }
+    }
+
 }
