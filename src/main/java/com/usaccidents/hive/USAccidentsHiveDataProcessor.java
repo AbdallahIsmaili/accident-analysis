@@ -4,8 +4,12 @@ import com.usaccidents.io.HiveUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -527,6 +531,76 @@ public class USAccidentsHiveDataProcessor {
                 selectSampleRows(table);
             } catch (Exception e) {
                 logger.error("Error sampling table {}: {}", table, e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Saves the contents of a Hive table to a CSV file
+     * @param tableName The name of the table to export
+     * @param outputPath The full path to the output CSV file
+     */
+    public void saveTableToCSV(String tableName, String outputPath) throws IOException {
+        logger.info("Exporting {} table to CSV file: {}", tableName, outputPath);
+
+        // Get all data from the table first
+        String query = "SELECT * FROM " + tableName;
+        List<Map<String, Object>> results = hiveUtils.executeQuery(query);
+
+        if (results.isEmpty()) {
+            logger.warn("Table {} is empty, creating empty CSV file", tableName);
+            // Create empty file
+            try (FileWriter writer = new FileWriter(outputPath)) {
+                writer.write("");
+            }
+            return;
+        }
+
+        try (FileWriter writer = new FileWriter(outputPath)) {
+            // Write header row
+            writer.write(String.join(",", results.get(0).keySet()) + "\n");
+
+            // Write data rows
+            for (Map<String, Object> row : results) {
+                List<String> values = new ArrayList<>();
+                for (Object value : row.values()) {
+                    String strValue = (value != null) ? value.toString() : "";
+                    // Escape commas in values
+                    if (strValue.contains(",")) {
+                        strValue = "\"" + strValue + "\"";
+                    }
+                    values.add(strValue);
+                }
+                writer.write(String.join(",", values) + "\n");
+            }
+        }
+        logger.info("Successfully exported {} rows from {} to {}", results.size(), tableName, outputPath);
+    }
+
+    /**
+     * Saves all analysis tables to CSV files in the specified directory
+     * @param outputDir The directory where CSV files should be saved
+     */
+    public void saveAllAnalysisTablesToCSV(String outputDir) {
+        String[] analysisTables = {
+                "location_analysis",
+                "severity_analysis",
+                "time_analysis",
+                "weather_analysis"
+        };
+
+        // Ensure directory exists
+        File dir = new File(outputDir);
+        if (!dir.exists()) {
+            dir.mkdirs();
+        }
+
+        for (String table : analysisTables) {
+            String outputPath = outputDir + File.separator + table + ".csv";
+            try {
+                saveTableToCSV(table, outputPath);
+            } catch (Exception e) {
+                logger.error("Failed to export {} table to CSV: {}", table, e.getMessage());
             }
         }
     }
