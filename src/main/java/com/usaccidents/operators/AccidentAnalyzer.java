@@ -9,9 +9,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
-/**
- * Analyzes accident data to produce various statistics
- */
 public class AccidentAnalyzer {
     private static final Logger logger = LoggerFactory.getLogger(AccidentAnalyzer.class);
 
