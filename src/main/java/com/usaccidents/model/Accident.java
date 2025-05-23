@@ -2,9 +2,6 @@ package com.usaccidents.model;
 
 import java.time.LocalDateTime;
 
-/**
- * Model class representing a US traffic accident
- */
 public class Accident {
     private String id;
     private int severity;

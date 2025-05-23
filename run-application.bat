@@ -27,7 +27,7 @@ echo Input directory: %INPUT_DIR%
 echo Output directory: %OUTPUT_DIR%
 
 REM Run the application
-"%JAVA_HOME%\bin\java" -cp "%APP_JAR%" com.usaccidents.USAccidentsStandaloneApp "%INPUT_DIR%" "%OUTPUT_DIR%"
+"%JAVA_HOME%\bin\java" -cp "%APP_JAR%" com.usaccidents.USAccidentsHDFSApp "%INPUT_DIR%" "%OUTPUT_DIR%"
 
 if %ERRORLEVEL% EQU 0 (
     echo Application completed successfully!

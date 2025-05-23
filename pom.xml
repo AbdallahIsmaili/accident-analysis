@@ -84,7 +84,7 @@
             <manifest>
               <addClasspath>true</addClasspath>
               <classpathPrefix>lib/</classpathPrefix>
-              <mainClass>com.usaccidents.USAccidentsStandaloneApp</mainClass>
+              <mainClass>com.usaccidents.USAccidentsHDFSApp</mainClass>
             </manifest>
           </archive>
         </configuration>
@@ -99,7 +99,7 @@
           </descriptorRefs>
           <archive>
             <manifest>
-              <mainClass>com.usaccidents.USAccidentsStandaloneApp</mainClass>
+              <mainClass>com.usaccidents.USAccidentsHDFSApp</mainClass>
             </manifest>
           </archive>
         </configuration>
